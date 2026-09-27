@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.shaggyd.dotcom",
+  "name": "Dot Com",
+  "version": "0.1.0",
+  "author": "dchadwick",
+  "description": "A draggable on-screen dot that opens a pie menu of window and system actions, built for touch-first tablet use.",
+  "kinds": [
+    "overlay",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Dot.qml",
+    "barWidget": "BarIcon.qml"
+  },
+  "barWidget": {
+    "displayName": "Touch pie",
+    "description": "Show or hide the touch pie dot.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
