@@ -79,8 +79,9 @@ o.bind("SUPER + SHIFT + PERIOD", "Edit touch pie", "omarchy-shell shell call io.
 |---|---|
 | Tap the dot | Open or close the pie |
 | Tap a slice | Run it (hold a `+`/`-` slice to ramp: brightness, volume) |
-| Press and hold, then drag | Move the dot; release to place it |
+| Press and hold, then drag | Move the dot; a flick glides to a stop and bounces off an edge |
 | Tap elsewhere, or `Esc` | Dismiss |
+| Right-click the bar icon | Open the Command Deck on Settings |
 
 The default pie has five slices: **Fullscreen**, **Float**, **Keyboard**,
 **Apps** and **Settings**. The Settings slice is the only way into the editor
@@ -88,28 +89,39 @@ from the pie, so it cannot be removed.
 
 ### The Command Deck
 
-Open **Settings** (`pie.edit`) to edit the pie in place — every slice is drawn
-exactly as it will be saved. The footer reads **Dot Commander · Command Deck**:
-the editor is where you command the pie.
+Open **Settings** from the pie (`pie.edit`), or **right-click the bar icon**, to
+open the Command Deck. While it is up the pie stays beside it as a live,
+WYSIWYG preview, and the deck docks on whichever side the dot is not.
 
-- The **`<<` `+` `>>`** bar below the ring adds a slice from the tile sheet.
-  Pick a category (Window, System, Keyboard, Menu, Apps, Plugins) and a tile.
-  Menu and Apps are built from your live Omarchy install, so they stay in sync.
-- **Drag a slice** to reorder it around the ring.
-- **Remove** a slice from its slot; the hub (**Done**) saves, or discard to
-  cancel.
+**Slices** — build the ring:
+
+- The list shows every slice. **▲ / ▼** reorders it (or drag it around the pie
+  itself), **⟳** replaces it from the tile sheet, **🗑** removes it.
+- **Add slice** opens the tile sheet. Pick a category (Window, System, Keyboard,
+  Menu, Apps, Plugins) and a tile; Menu and Apps come from your live Omarchy
+  install, so they stay in sync.
+- The Settings slice cannot be replaced or removed — it is the only way into the
+  editor from the pie — and the ring keeps at least three slices.
 - Tiles that need a binary, backend or plugin you do not have draw dimmed.
 
-![Editing the pie in place](preview-editor.png)
+**Settings** — the live knobs: Physics, Spring open, Open wobble and Flick
+inertia; Show labels and Comfort inset; Dot size, Pie radius, Icon size and Idle
+opacity; plus Recenter and Reset all. Settings apply live and autosave.
+
+**Done** (the hub, or ✓) saves the slices; **Cancel** (✕) discards them and
+reverts any settings changed since the deck opened.
+
+![The Command Deck, Slices page](preview-editor.png)
+
+![The Settings page](preview-settings.png)
 
 ![Adding a slice from the tile sheet](preview-picker.png)
 
-Changes are written to `dot.json` (below).
-
 ## Configure
 
-State lives in `~/.local/state/omarchy/dot.json`. The editor writes it; you can
-also edit it by hand, and the shell reloads it on save.
+State lives in `~/.local/state/omarchy/dot.json`. The Command Deck writes it —
+settings apply live and save automatically, slices save on Done — and the shell
+reloads the file on save, so you can also edit it by hand.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -153,7 +165,8 @@ Built-in slices reference these keys (see [`Catalog.js`](Catalog.js)).
 ```sh
 omarchy-shell shell toggle io.github.shaggyd.dotcom '{}'            # open / close the pie
 omarchy-shell shell call io.github.shaggyd.dotcom toggleDot '{}'    # show / hide the dot
-omarchy-shell shell call io.github.shaggyd.dotcom enterEdit '{}'    # open the editor
+omarchy-shell shell call io.github.shaggyd.dotcom enterEdit '{}'    # open the Command Deck (Slices)
+omarchy-shell shell call io.github.shaggyd.dotcom settings '{}'     # open the Command Deck (Settings)
 omarchy-shell shell call io.github.shaggyd.dotcom recenter '{}'     # put the dot back
 omarchy-shell shell call io.github.shaggyd.dotcom commander '{}'    # Dot Commander, reporting for duty
 omarchy-shell shell call io.github.shaggyd.dotcom debugGeometry     # diagnostics

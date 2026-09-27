@@ -35,6 +35,12 @@ Item {
   implicitHeight: Style.bar.sizeHorizontal
 
   function triggerPress(button) {
+    // Right-click opens the Command Deck on its Settings page; left toggles the
+    // dot. The bar host forwards the button through this same entry point.
+    if (button === Qt.RightButton) {
+      Util.execArgv(["omarchy-shell", "shell", "call", "io.github.shaggyd.dotcom", "settings", "{}"])
+      return
+    }
     if (button !== Qt.LeftButton) return
     Util.execArgv(["omarchy-shell", "shell", "call", "io.github.shaggyd.dotcom", "toggleDot", "{}"])
   }

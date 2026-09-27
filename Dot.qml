@@ -125,8 +125,8 @@ Item {
   property var targetScreen: null
 
   // "use"  -- the pie runs actions.
-  // "edit" -- WYSIWYG editor: every slice draws exactly as it would be saved,
-  //           with the << + >> bar below the ring and the hub as Done.
+  // "edit" -- the Command Deck panel is docked beside the pie, which stays as
+  //           the WYSIWYG live preview; the hub is Done.
   // "pick" -- the tile sheet is open over the editor for one slice.
   property string mode: "use"
   property var draftSlices: []
@@ -135,6 +135,12 @@ Item {
   property string pickQuery: ""
   property bool editDirty: false
   property bool confirmCancel: false
+  // Command Deck panel state. `configBackup` snapshots the settings on enter so
+  // Cancel can revert them (settings apply live for the preview); `deckTab`
+  // picks the Slices or Settings page.
+  property string deckTab: "slices"
+  property var configBackup: null
+  readonly property bool deckRight: root.dotX < ((root.screenW > 0 ? root.screenW : panel.width) / 2)
   // Transient line shown while editing. The dot's failure flash is unavailable
   // here because the dot is hidden in edit mode.
   property string editNotice: ""
@@ -546,11 +552,24 @@ Item {
     return o
   }
 
+  // Right-click on the bar icon lands here: open the Command Deck on Settings,
+  // the plugin's "settings button".
+  function settings() {
+    root.enterEdit()
+    root.deckTab = "settings"
+    return "ok"
+  }
+
   function enterEdit() {
     root.draftSlices = root.activeSlices.slice()
     root.editDirty = false
     root.confirmCancel = false
     root.pickIndex = -1
+    // Snapshot settings so Cancel can revert the live edits the panel makes.
+    var backup = {}
+    for (var bk in root.config) backup[bk] = root.config[bk]
+    root.configBackup = backup
+    root.deckTab = "slices"
     root.setStableIds(root.draftSlices)
     root.mode = "edit"
     root.opened = true
@@ -574,6 +593,7 @@ Item {
     root.pickIndex = -1
     root.editDirty = false
     root.confirmCancel = false
+    root.configBackup = null
     root.syncStableIds()
   }
 
@@ -585,6 +605,12 @@ Item {
       return
     }
     root.confirmCancel = false
+    // Revert the live settings edits the panel made while open.
+    if (root.configBackup) {
+      root.config = root.configBackup
+      root.configBackup = null
+      root.persist()
+    }
     root.draftSlices = []
     root.pickIndex = -1
     root.mode = "use"
@@ -723,6 +749,60 @@ Item {
     root.editDirty = true
     root.mode = "edit"
     root.pickIndex = -1
+  }
+
+  // ---- Command Deck panel helpers ----------------------------------------
+
+  // Move a draft slice by delta slots. The panel uses this for its up/down
+  // buttons; rotating the whole ring is just n of these, so the old floating
+  // << + >> rotate buttons are gone.
+  function moveDraftSlice(index, delta) {
+    var a = root.draftSlices.slice()
+    var to = index + delta
+    if (index < 0 || index >= a.length || to < 0 || to >= a.length) return
+    var item = a.splice(index, 1)[0]
+    a.splice(to, 0, item)
+    root.draftSlices = a
+    root.editDirty = true
+  }
+
+  function removeDraftSlice(index) {
+    if (index < 0) return
+    if (root.isEditorSlice(root.draftSlices[index])) {
+      root.notify("Settings cannot be removed")
+      return
+    }
+    if (root.draftSlices.length <= 3) { root.notify("Keep at least three slices"); return }
+    var a = root.draftSlices.slice()
+    a.splice(index, 1)
+    root.draftSlices = a
+    root.syncStableIds()
+    root.editDirty = true
+  }
+
+  // Settings apply immediately and autosave, so the panel is a live preview;
+  // enterEdit snapshots the old config so Cancel can still revert them.
+  function setConfig(key, value) {
+    var next = {}
+    for (var k in root.config) next[k] = root.config[k]
+    next[String(key)] = value
+    root.config = next
+    root.persistSoon()
+  }
+
+  function toggleConfig(key) {
+    root.setConfig(key, root.config[String(key)] !== true)
+  }
+
+  function persistSoon() {
+    if (!persistDebounce.running) persistDebounce.restart()
+  }
+
+  // Slice label/glyph rendering shared by the panel list and the pie: an app
+  // slice carries an image, a menu slice a Nerd Font glyph, everything else a
+  // Material Symbols glyph.
+  function sliceFontFamily(slice) {
+    return (slice && slice.font === "menu") ? Style.font.menuFamily : root.iconFamily
   }
 
   // Exposed for `omarchy-shell shell call io.github.shaggyd.dotcom debugGeometry`.
@@ -2362,82 +2442,248 @@ Item {
         }
       }
     }
-    // --------------------------------------------------------------- edit bar
+    // -------------------------------------------------------- command deck
     //
-    // Below the ring, centred on the dot. The edit-mode comfort inset reserves
-    // editBarHeight + editBarGap out of the screen edge, so this always fits
-    // without the ring shrinking -- the ring has to stay the size it will be
-    // saved at, or the WYSIWYG preview would be lying.
+    // The always-active configuration surface while editing: a card docked to
+    // the side opposite the dot, so it never covers the pie, with a Slices page
+    // for building the ring and a Settings page for the live knobs. The pie
+    // beside it is the WYSIWYG preview. This replaces the old floating
+    // << + >> bar, which only ever did one of those jobs.
     Item {
-      id: editBar
-      visible: root.mode === "edit"
-      width: editBarRow.width
-      height: root.editBarHeight
-      x: Math.round(root.dotX - width / 2)
-      y: Math.round(root.editBarY)
-      z: 12
+      id: commandDeck
+      visible: root.mode === "edit" || root.mode === "pick"
+      z: 15
+      width: Style.space(330)
+      height: Math.min(panel.height - Style.space(40), Style.space(600))
+      x: root.deckRight ? panel.width - width - Style.space(16) : Style.space(16)
+      y: Math.round((panel.height - height) / 2)
 
-      readonly property var buttons: [
-        { act: "rotL", glyph: Catalog.g(0xE5CB), tip: "Rotate left" },
-        { act: "add",  glyph: Catalog.g(0xE145), tip: "Add a slice" },
-        { act: "rotR", glyph: Catalog.g(0xE5CC), tip: "Rotate right" }
-      ]
+      Rectangle {
+        anchors.fill: parent
+        radius: Style.space(14)
+        color: Util.alpha(Color.background, 0.97)
+        border.width: Math.max(1, Style.space(1))
+        border.color: root.ringBorderColor
 
-      Row {
-        id: editBarRow
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: Style.space(10)
+        Column {
+          id: deckColumn
+          anchors.fill: parent
+          anchors.margins: Style.space(14)
+          spacing: Style.space(10)
 
-        Repeater {
-          model: editBar.buttons
+          Item {
+            width: parent.width
+            height: Style.space(38)
 
-          delegate: Rectangle {
-            required property var modelData
-            width: root.editBarHeight
-            height: root.editBarHeight
-            radius: width / 2
-            color: Util.alpha(Color.background, 0.94)
-            border.width: Math.max(1, Style.space(1))
-            border.color: root.ringBorderColor
-            opacity: (modelData.act === "add" && root.draftSlices.length >= 9) ? 0.35 : 1
-
-            Text {
-              anchors.centerIn: parent
-              text: modelData.glyph
-              color: Color.foreground
-              font.family: root.iconFamily
-              font.pixelSize: root.editBarHeight * 0.5
-              renderType: Text.NativeRendering
+            Column {
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              Text {
+                text: "Command Deck"
+                color: Color.foreground
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.title
+              }
+              Text {
+                text: "DOT COMMANDER"
+                color: Util.alpha(Color.foreground, 0.5)
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+              }
             }
 
-            MouseArea {
-              anchors.fill: parent
-              acceptedButtons: Qt.LeftButton
-              onClicked: {
-                if (modelData.act === "rotL") root.rotateDraft(-1)
-                else if (modelData.act === "rotR") root.rotateDraft(1)
-                else root.addSlice()
+            Row {
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(8)
+              DeckRound { glyph: Catalog.g(0xE14C); tint: Color.foreground; onTapped: root.cancelEdit() }
+              DeckRound { glyph: Catalog.g(0xE5CA); tint: Color.accent; onTapped: root.commitEdit() }
+            }
+          }
+
+          Row {
+            width: parent.width
+            spacing: Style.space(8)
+            Repeater {
+              model: [ { tab: "slices", label: "Slices" }, { tab: "settings", label: "Settings" } ]
+              delegate: Rectangle {
+                required property var modelData
+                readonly property bool sel: root.deckTab === modelData.tab
+                width: (deckColumn.width - Style.space(8)) / 2
+                height: Style.space(30)
+                radius: height / 2
+                color: sel ? Util.alpha(Color.accent, 0.9) : Util.alpha(Color.foreground, 0.08)
+                border.width: Math.max(1, Style.space(1))
+                border.color: Util.alpha(sel ? Color.accent : Color.foreground, 0.5)
+                Text {
+                  anchors.centerIn: parent
+                  text: modelData.label
+                  color: sel ? Color.background : Color.foreground
+                  font.family: Style.font.menuFamily
+                  font.pixelSize: Style.font.body
+                }
+                MouseArea { anchors.fill: parent; onClicked: root.deckTab = modelData.tab }
+              }
+            }
+          }
+
+          Flickable {
+            width: parent.width
+            height: deckColumn.height - y
+            contentWidth: width
+            contentHeight: deckBody.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            Column {
+              id: deckBody
+              width: parent.width
+              spacing: Style.space(8)
+
+              // ---------------------------------------------------- Slices
+              Column {
+                visible: root.deckTab === "slices"
+                width: parent.width
+                spacing: Style.space(6)
+
+                Repeater {
+                  model: root.draftSlices.length
+
+                  delegate: Rectangle {
+                    id: deckRow
+                    required property int index
+                    readonly property var slice: root.draftSlices[index] || null
+                    readonly property bool locked: root.isEditorSlice(deckRow.slice)
+                    width: deckBody.width
+                    height: Style.space(42)
+                    radius: Style.space(8)
+                    color: Util.alpha(Color.foreground, 0.06)
+
+                    Item {
+                      anchors.left: parent.left
+                      anchors.leftMargin: Style.space(8)
+                      anchors.verticalCenter: parent.verticalCenter
+                      width: Style.space(24)
+                      height: Style.space(24)
+
+                      Image {
+                        anchors.centerIn: parent
+                        visible: !!(deckRow.slice && deckRow.slice.icon)
+                        source: (deckRow.slice && deckRow.slice.icon) ? deckRow.slice.icon : ""
+                        sourceSize.width: Style.space(18)
+                        sourceSize.height: Style.space(18)
+                        width: Style.space(18)
+                        height: Style.space(18)
+                        fillMode: Image.PreserveAspectFit
+                      }
+                      Text {
+                        anchors.centerIn: parent
+                        visible: !(deckRow.slice && deckRow.slice.icon)
+                        text: deckRow.slice ? deckRow.slice.glyph : ""
+                        color: Color.foreground
+                        font.family: root.sliceFontFamily(deckRow.slice)
+                        font.pixelSize: Style.space(18)
+                        renderType: Text.NativeRendering
+                      }
+                    }
+
+                    Text {
+                      anchors.left: parent.left
+                      anchors.leftMargin: Style.space(38)
+                      anchors.right: rowButtons.left
+                      anchors.rightMargin: Style.space(6)
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: deckRow.slice ? deckRow.slice.label : ""
+                      color: Color.foreground
+                      elide: Text.ElideRight
+                      font.family: Style.font.menuFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+
+                    Row {
+                      id: rowButtons
+                      anchors.right: parent.right
+                      anchors.rightMargin: Style.space(6)
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.space(2)
+
+                      DeckRowButton { glyph: Catalog.g(0xE5D8); dim: index === 0; onTapped: root.moveDraftSlice(index, -1) }
+                      DeckRowButton { glyph: Catalog.g(0xE5DB); dim: index === root.draftSlices.length - 1; onTapped: root.moveDraftSlice(index, 1) }
+                      DeckRowButton { glyph: Catalog.g(0xE5D5); dim: deckRow.locked; onTapped: root.openPickerFor(index) }
+                      DeckRowButton { glyph: Catalog.g(0xE872); tint: Color.urgent; dim: deckRow.locked || root.draftSlices.length <= 3; onTapped: root.removeDraftSlice(index) }
+                    }
+                  }
+                }
+
+                Rectangle {
+                  width: deckBody.width
+                  height: Style.space(42)
+                  radius: Style.space(8)
+                  color: Util.alpha(Color.accent, 0.14)
+                  border.width: Math.max(1, Style.space(1))
+                  border.color: Util.alpha(Color.accent, 0.6)
+                  opacity: root.draftSlices.length >= 9 ? 0.4 : 1
+
+                  Row {
+                    anchors.centerIn: parent
+                    spacing: Style.space(6)
+                    Text {
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: Catalog.g(0xE145)
+                      color: Color.accent
+                      font.family: root.iconFamily
+                      font.pixelSize: Style.space(18)
+                      renderType: Text.NativeRendering
+                    }
+                    Text {
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: "Add slice"
+                      color: Color.accent
+                      font.family: Style.font.menuFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                  }
+                  MouseArea {
+                    anchors.fill: parent
+                    enabled: root.draftSlices.length < 9
+                    onClicked: root.addSlice()
+                  }
+                }
+              }
+
+              // -------------------------------------------------- Settings
+              Column {
+                visible: root.deckTab === "settings"
+                width: parent.width
+                spacing: Style.space(8)
+
+                DeckSection { text: "Motion" }
+                DeckSwitch { text: "Physics"; value: root.config.physics; onToggled: root.toggleConfig("physics") }
+                DeckSwitch { text: "Spring open"; value: root.config.springOpen; onToggled: root.toggleConfig("springOpen") }
+                DeckSwitch { text: "Open wobble"; value: root.config.wobble; onToggled: root.toggleConfig("wobble") }
+                DeckSwitch { text: "Flick inertia"; value: root.config.inertia; onToggled: root.toggleConfig("inertia") }
+
+                DeckSection { text: "Appearance" }
+                DeckSwitch { text: "Show labels"; value: root.config.showLabels; onToggled: root.toggleConfig("showLabels") }
+                DeckSwitch { text: "Comfort inset"; value: root.config.comfort; onToggled: root.toggleConfig("comfort") }
+                DeckSlider { text: "Dot size"; value: Number(root.config.dotSize); from: 28; to: 96; onMoved: function (v) { root.setConfig("dotSize", Math.round(v)) } }
+                DeckSlider { text: "Pie radius"; value: Number(root.config.radius); from: 80; to: 220; onMoved: function (v) { root.setConfig("radius", Math.round(v)) } }
+                DeckSlider { text: "Icon size"; value: Number(root.config.iconSize); from: 18; to: 48; onMoved: function (v) { root.setConfig("iconSize", Math.round(v)) } }
+                DeckSlider { text: "Idle opacity"; value: Number(root.config.idleOpacity); from: 0.2; to: 1; decimals: 2; onMoved: function (v) { root.setConfig("idleOpacity", v) } }
+
+                DeckSection { text: "Actions" }
+                Row {
+                  width: parent.width
+                  spacing: Style.space(8)
+                  DeckAction { text: "Recenter"; onTapped: root.recenter() }
+                  DeckAction { text: "Reset all"; tint: Color.urgent; onTapped: root.resetConfig() }
+                }
               }
             }
           }
         }
       }
-    }
-
-    // The Command Deck signature. Dot Com is short for Dot Commander, and this
-    // is where you command the pie.
-    Text {
-      visible: root.mode === "edit"
-      anchors.horizontalCenter: parent.horizontalCenter
-      y: root.editBarBelow
-        ? root.editBarY + root.editBarHeight + Style.space(6)
-        : root.editBarY - Style.space(20)
-      text: "DOT COMMANDER · COMMAND DECK"
-      color: Util.alpha(Color.foreground, 0.55)
-      font.family: Style.font.menuFamily
-      font.pixelSize: Style.font.bodySmall
-      font.letterSpacing: 1
-      z: 14
     }
 
     // The hub while editing: Done. Commits the draft and leaves edit mode.
@@ -2859,6 +3105,14 @@ Item {
     onTriggered: root.confirmCancel = false
   }
 
+  // Debounce for settings autosave, so dragging a slider does not rewrite
+  // dot.json on every frame.
+  Timer {
+    id: persistDebounce
+    interval: 250
+    onTriggered: root.persist()
+  }
+
   // First-run salute. applyState() calls maybeGreet() once the state file
   // lands; this covers a fresh install, where there is no dot.json yet.
   Timer {
@@ -2877,6 +3131,201 @@ Item {
     onLoaded: root.menuCatalog = Catalog.menuEntries(text())
     onLoadFailed: root.menuCatalog = []
     onFileChanged: reload()
+  }
+
+  // --------------------------------------------------- Command Deck controls
+  //
+  // Small self-contained controls for the panel above. They only depend on the
+  // theme singletons and emit signals, so they stay usable from anywhere in the
+  // file without reaching back into root.
+
+  component DeckRound: Rectangle {
+    id: round
+    property string glyph: ""
+    property color tint: Color.foreground
+    signal tapped()
+    width: Style.space(34)
+    height: width
+    radius: width / 2
+    color: Util.alpha(tint, 0.16)
+    border.width: Math.max(1, Style.space(1))
+    border.color: Util.alpha(tint, 0.7)
+    Text {
+      anchors.centerIn: parent
+      text: round.glyph
+      color: round.tint
+      font.family: "Material Symbols Rounded"
+      font.pixelSize: Style.space(18)
+      renderType: Text.NativeRendering
+    }
+    MouseArea { anchors.fill: parent; onClicked: round.tapped() }
+  }
+
+  component DeckRowButton: Rectangle {
+    id: rb
+    property string glyph: ""
+    property color tint: Color.foreground
+    property bool dim: false
+    signal tapped()
+    width: Style.space(26)
+    height: width
+    radius: Style.space(6)
+    color: Util.alpha(tint, dim ? 0.04 : 0.12)
+    opacity: dim ? 0.4 : 1
+    Text {
+      anchors.centerIn: parent
+      text: rb.glyph
+      color: rb.tint
+      font.family: "Material Symbols Rounded"
+      font.pixelSize: Style.space(15)
+      renderType: Text.NativeRendering
+    }
+    MouseArea { anchors.fill: parent; enabled: !rb.dim; onClicked: rb.tapped() }
+  }
+
+  component DeckSection: Item {
+    id: sec
+    property string text: ""
+    width: parent ? parent.width : 0
+    height: Style.space(26)
+    Text {
+      anchors.left: parent.left
+      anchors.bottom: parent.bottom
+      text: sec.text.toUpperCase()
+      color: Util.alpha(Color.foreground, 0.5)
+      font.family: Style.font.menuFamily
+      font.pixelSize: Style.font.caption
+      font.letterSpacing: 1
+    }
+  }
+
+  component DeckSwitch: Item {
+    id: sw
+    property string text: ""
+    property bool value: false
+    signal toggled()
+    width: parent ? parent.width : Style.space(280)
+    height: Style.space(30)
+    Text {
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      text: sw.text
+      color: Color.foreground
+      font.family: Style.font.menuFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+    Rectangle {
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(40)
+      height: Style.space(22)
+      radius: height / 2
+      color: sw.value ? Util.alpha(Color.accent, 0.9) : Util.alpha(Color.foreground, 0.16)
+      border.width: Math.max(1, Style.space(1))
+      border.color: Util.alpha(sw.value ? Color.accent : Color.foreground, 0.6)
+      Rectangle {
+        width: parent.height - Style.space(4)
+        height: width
+        radius: width / 2
+        y: Style.space(2)
+        x: sw.value ? parent.width - width - Style.space(2) : Style.space(2)
+        color: Color.background
+        Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+      }
+      MouseArea { anchors.fill: parent; onClicked: sw.toggled() }
+    }
+  }
+
+  component DeckSlider: Item {
+    id: sl
+    property string text: ""
+    property real value: 0
+    property real from: 0
+    property real to: 1
+    property int decimals: 0
+    signal moved(real v)
+    width: parent ? parent.width : Style.space(280)
+    height: Style.space(36)
+
+    function update(mx) {
+      var t = Math.max(0, Math.min(1, mx / track.width))
+      sl.moved(sl.from + t * (sl.to - sl.from))
+    }
+
+    Text {
+      anchors.left: parent.left
+      anchors.top: parent.top
+      text: sl.text
+      color: Color.foreground
+      font.family: Style.font.menuFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+    Text {
+      anchors.right: parent.right
+      anchors.top: parent.top
+      text: sl.value.toFixed(sl.decimals)
+      color: Util.alpha(Color.foreground, 0.7)
+      font.family: Style.font.menuFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+    Rectangle {
+      id: track
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: Style.space(4)
+      radius: height / 2
+      color: Util.alpha(Color.foreground, 0.18)
+
+      readonly property real frac: Math.max(0, Math.min(1,
+        (sl.value - sl.from) / Math.max(0.0001, sl.to - sl.from)))
+
+      Rectangle {
+        width: parent.width * track.frac
+        height: parent.height
+        radius: parent.radius
+        color: Util.alpha(Color.accent, 0.9)
+      }
+      Rectangle {
+        width: Style.space(14)
+        height: width
+        radius: width / 2
+        y: (track.height - height) / 2
+        x: Math.max(0, Math.min(track.width - width, track.width * track.frac - width / 2))
+        color: Color.foreground
+        border.width: 1
+        border.color: Color.background
+      }
+      MouseArea {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        height: Style.space(26)
+        onPressed: function (m) { sl.update(m.x) }
+        onPositionChanged: function (m) { if (pressed) sl.update(m.x) }
+      }
+    }
+  }
+
+  component DeckAction: Rectangle {
+    id: act
+    property string text: ""
+    property color tint: Color.accent
+    signal tapped()
+    width: Style.space(145)
+    height: Style.space(34)
+    radius: Style.space(8)
+    color: Util.alpha(tint, 0.14)
+    border.width: Math.max(1, Style.space(1))
+    border.color: Util.alpha(tint, 0.6)
+    Text {
+      anchors.centerIn: parent
+      text: act.text
+      color: act.tint
+      font.family: Style.font.menuFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+    MouseArea { anchors.fill: parent; onClicked: act.tapped() }
   }
 
 }
