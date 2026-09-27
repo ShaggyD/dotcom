@@ -3,8 +3,9 @@
   "id": "io.github.shaggyd.dotcom",
   "name": "Dot Com",
   "version": "0.1.0",
-  "author": "dchadwick",
-  "description": "A draggable on-screen dot that opens a pie menu of window and system actions, built for touch-first tablet use.",
+  "author": "ShaggyD",
+  "license": "Apache-2.0",
+  "description": "A draggable on-screen dot that opens a radial pie menu of window, system, keyboard and app actions, built for touch-first Omarchy tablets.",
   "kinds": [
     "overlay",
     "bar-widget"
