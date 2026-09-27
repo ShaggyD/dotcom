@@ -44,6 +44,13 @@ Item {
     enabled: true,
     // Set after the first-run salute, so "reporting for duty" shows once.
     greeted: false,
+    // Motion. `physics` is the master switch. springOpen and wobble are
+    // separate so the two open effects can be tried apart or together, and
+    // inertia can be turned off if a flying dot is not wanted.
+    physics: true,
+    springOpen: true,
+    wobble: true,
+    inertia: true,
     fx: 0.72,
     fy: 0.72,
     slices: null
@@ -76,6 +83,22 @@ Item {
   // pie's appearance is a function of this one number, so opening and
   // closing are the same animation played forwards and backwards.
   property real pieProgress: 0
+
+  // The open effects. `pieProgress` drives the radial spring pop; `wobbleAngle`
+  // is a one-shot damped spin, kicked on open and applied as a rotation about
+  // the dot, so the ring settles with a little wobble.
+  property real wobbleAngle: 0
+  property real wobbleKick: 6
+  // Press/release squash on the dot, and the magnet on a pressed slice.
+  property real squashX: 1
+  property real squashY: 1
+  property bool slicePressed: false
+  // Drag velocity, low-pass filtered, for the release glide.
+  property real vX: 0
+  property real vY: 0
+  property real lastSampleT: 0
+  property real inertiaToX: 0
+  property real inertiaToY: 0
 
   // The dot can be switched off entirely -- useful when the screen should stay
   // clear, or when a physical keyboard makes it unnecessary. The bar icon
@@ -766,6 +789,17 @@ Item {
     root.chooseEntry(e)
   }
 
+  // A one-shot pulse at a slice, used on tap/ramp for feedback. Position is
+  // recomputed from the slice's slot, which is where it was pressed.
+  function rippleAt(slot) {
+    if (!root.config.physics) return
+    var rad = (root.sectorAngle * slot) * Math.PI / 180
+    var r = root.outerRadius * 0.6
+    ripple.x = Math.round(root.pieCentre.x + Math.sin(rad) * r - ripple.width / 2)
+    ripple.y = Math.round(root.pieCentre.y - Math.cos(rad) * r - ripple.height / 2)
+    rippleAnim.restart()
+  }
+
   function recenter() {
     var next = {}
     for (var k in root.config) next[k] = root.config[k]
@@ -1226,11 +1260,43 @@ Item {
 
   onOpenedChanged: {
     pieProgress = opened ? 1 : 0
-    if (!opened) repeatTimer.stop()
+    if (!opened) { repeatTimer.stop(); wobbleAnim.stop(); wobbleAngle = 0 }
+    if (opened && root.config.physics && root.config.wobble) wobbleAnim.restart()
   }
 
   Behavior on pieProgress {
-    NumberAnimation { duration: 190; easing.type: Easing.OutCubic }
+    // Physics on: OutBack overshoots past 1 and settles, so the pie pops out
+    // of the dot. Close uses an accelerating ease so it never swings below
+    // zero -- a spring there would mirror the pie through the origin.
+    NumberAnimation {
+      duration: root.opened
+        ? (root.config.physics && root.config.springOpen ? 340 : 190)
+        : 170
+      easing.type: root.opened
+        ? ((root.config.physics && root.config.springOpen) ? Easing.OutBack : Easing.OutCubic)
+        : Easing.InCubic
+    }
+  }
+
+  // Damped spin, kicked on open: OutElastic decays from the kick to zero, so
+  // the ring rotates out and wobbles back into place.
+  NumberAnimation {
+    id: wobbleAnim
+    target: root
+    property: "wobbleAngle"
+    from: root.wobbleKick
+    to: 0
+    duration: 900
+    easing.type: Easing.OutElastic
+    easing.amplitude: 1.1
+    easing.period: 0.3
+  }
+
+  Behavior on squashX {
+    SpringAnimation { spring: 4.5; damping: 0.4; epsilon: 0.002 }
+  }
+  Behavior on squashY {
+    SpringAnimation { spring: 4.5; damping: 0.4; epsilon: 0.002 }
   }
 
   // ------------------------------------------------------------------ config
@@ -1502,16 +1568,62 @@ Item {
   // go missing; sampling on a timer keeps following the finger either way.
   function sampleDrag() {
     if (!dotInput.pressed || !root.dragArmed) return
-    // The window covers the screen, so its local coordinates are screen
-    // coordinates. The offset captured at press time keeps the dot from
-    // sliding out from under a finger that landed off-centre. Mapped into
-    // screenSpace, not `panel` -- see the note on that Item.
     var p = dotInput.mapToItem(screenSpace, dotInput.mouseX, dotInput.mouseY)
     var c = root.clampToScreen(p.x + root.grabOffsetX, p.y + root.grabOffsetY)
     if (Math.abs(c.x - root.dotX) > Style.space(3) || Math.abs(c.y - root.dotY) > Style.space(3))
       root.moved = true
+    // Low-passed velocity, px/s, for the release glide. Sampling runs on both
+    // motion events and the hold timer, so it stays fed even when motion events
+    // dry up mid-drag.
+    var t = Date.now()
+    if (root.lastSampleT > 0) {
+      var dt = (t - root.lastSampleT) / 1000
+      if (dt > 0.001) {
+        root.vX = 0.6 * ((c.x - root.dragX) / dt) + 0.4 * root.vX
+        root.vY = 0.6 * ((c.y - root.dragY) / dt) + 0.4 * root.vY
+      }
+    }
+    root.lastSampleT = t
     root.dragX = c.x
     root.dragY = c.y
+  }
+
+  // Project the flick and glide to a stop, bouncing off an edge with
+  // Easing.OutBounce when the projection would leave the screen. Returns false
+  // for a slow release, which just lands where the finger left it.
+  function startInertia() {
+    var speed = Math.sqrt(root.vX * root.vX + root.vY * root.vY)
+    if (speed < 500) return false
+    var px = root.dotX + root.vX * 0.30
+    var py = root.dotY + root.vY * 0.30
+    var c = root.clampToScreen(px, py)
+    var bounced = Math.abs(c.x - px) > 0.5 || Math.abs(c.y - py) > 0.5
+    var dur = Util.clamp(700 - speed / 8, 260, 700)
+    inertiaAnimX.to = c.x
+    inertiaAnimY.to = c.y
+    inertiaAnimX.duration = dur
+    inertiaAnimY.duration = dur
+    inertiaAnimX.easing.type = bounced ? Easing.OutBounce : Easing.OutCubic
+    inertiaAnimY.easing.type = bounced ? Easing.OutBounce : Easing.OutCubic
+    inertiaAnim.restart()
+    return true
+  }
+
+  // The release glide. Runs while `dragging` is still true, so dotX/dotY keep
+  // reading dragX/dragY; on finish it persists the resting spot and clears the
+  // drag state. remembersPosition() must run before dragging clears, or it
+  // would read the stale stored fractions.
+  ParallelAnimation {
+    id: inertiaAnim
+    NumberAnimation { id: inertiaAnimX; target: root; property: "dragX" }
+    NumberAnimation { id: inertiaAnimY; target: root; property: "dragY" }
+    onFinished: {
+      root.rememberPosition()
+      root.dragging = false
+      root.dragArmed = false
+      root.holding = false
+      root.moved = false
+    }
   }
 
   Timer {
@@ -1610,12 +1722,19 @@ Item {
       // out of the dot, so the 190ms animation costs nothing per frame -- a
       // transform is a GPU operation. The origin is the dot, so it grows from
       // there, exactly as the old radius ramp did.
-      transform: Scale {
-        origin.x: root.pieCentre.x
-        origin.y: root.pieCentre.y
-        xScale: root.pieProgress
-        yScale: root.pieProgress
-      }
+      transform: [
+        Scale {
+          origin.x: root.pieCentre.x
+          origin.y: root.pieCentre.y
+          xScale: root.pieProgress
+          yScale: root.pieProgress
+        },
+        Rotation {
+          origin.x: root.pieCentre.x
+          origin.y: root.pieCentre.y
+          angle: root.wobbleAngle
+        }
+      ]
 
       // One delegate per slice IDENTITY, not per slot. That is the whole point
       // of this structure: reordering changes each delegate's `slot`, which
@@ -1650,7 +1769,14 @@ Item {
           anchors.fill: parent
           visible: sliceItem.slice !== null
 
-          Behavior on angle { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+          // Reorder neighbours spring aside instead of sliding linearly.
+          Behavior on angle {
+            SpringAnimation {
+              spring: root.config.physics ? 2.6 : 400
+              damping: root.config.physics ? 0.4 : 1.0
+              epsilon: 0.5
+            }
+          }
 
           // Each wedge paints itself, so it can move independently of its
           // neighbours (a drag-shuffle animates each wedge's angle). Sized to
@@ -1727,9 +1853,19 @@ Item {
             x: root.pieCentre.x + Math.sin(sliceItem.rad) * sliceItem.labelR - width / 2
             y: root.pieCentre.y - Math.cos(sliceItem.rad) * sliceItem.labelR - height / 2
             opacity: sliceItem.available ? 1 : 0.35
-            scale: sliceItem.hot ? 1.12 : 1
+            // Hover grows a slice; a press springs it out further (the
+            // magnet), which reads as the slice rising to meet the finger.
+            readonly property bool magnet: root.config.physics
+              && root.slicePressed && root.hoveredSlice === sliceItem.slot
+            scale: (sliceItem.hot ? 1.12 : 1) * (magnet ? 1.22 : 1)
 
-            Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+            Behavior on scale {
+              SpringAnimation {
+                spring: root.config.physics ? 3.0 : 400
+                damping: root.config.physics ? 0.35 : 1.0
+                epsilon: 0.005
+              }
+            }
 
             // App slices carry an image; everything else a glyph. Menu-catalog
             // glyphs are Nerd Font, so they use the menu family -- rendering
@@ -1822,6 +1958,32 @@ Item {
         }
       }
 
+      // Selection ripple: a one-shot ring pulse where a slice was tapped.
+      Rectangle {
+        id: ripple
+        width: Style.space(30)
+        height: width
+        radius: width / 2
+        color: "transparent"
+        border.width: Style.space(2)
+        border.color: Color.accent
+        opacity: 0
+        visible: opacity > 0.01
+        z: 30
+
+        ParallelAnimation {
+          id: rippleAnim
+          NumberAnimation {
+            target: ripple; property: "scale"
+            from: 0.4; to: 2.4; duration: 430; easing.type: Easing.OutCubic
+          }
+          NumberAnimation {
+            target: ripple; property: "opacity"
+            from: 0.9; to: 0; duration: 430; easing.type: Easing.OutCubic
+          }
+        }
+      }
+
       // A single surface over the whole window owns pie interaction, so a
       // drag that wanders off a slice keeps tracking instead of falling
       // through to the scrim and closing the menu mid-gesture.
@@ -1885,6 +2047,8 @@ Item {
           var index = root.sliceAt(mouse.x, mouse.y)
           pieInput.pressRamps = false
           pieInput.pressIndex = -1
+          root.slicePressed = index >= 0
+          if (root.mode === "use" && index >= 0) root.rippleAt(index)
           if (root.mode !== "use" || index < 0) return
           var slice = root.displaySlices[index]
           if (slice && slice.repeat === true) {
@@ -1902,6 +2066,7 @@ Item {
         onReleased: {
           repeatTimer.stop()
           pieInput.pressActive = false
+          root.slicePressed = false
           if (pieInput.dragged) root.endDrag()
         }
 
@@ -1910,6 +2075,7 @@ Item {
           pieInput.pressActive = false
           pieInput.pressRamps = false
           pieInput.pressIndex = -1
+          root.slicePressed = false
           if (pieInput.dragged) { pieInput.dragged = false; root.endDrag() }
         }
 
@@ -2029,6 +2195,14 @@ Item {
       y: Math.round(root.dotY - height / 2)
       opacity: root.currentOpacity
       scale: root.hovering || root.dragArmed ? 1.12 : (root.failed ? 1.2 : 1)
+      // Squash and stretch: a press squashes the coin, and the spring
+      // Behaviors on squashX/squashY give it a bouncy return.
+      transform: Scale {
+        origin.x: dot.width / 2
+        origin.y: dot.height / 2
+        xScale: root.squashX
+        yScale: root.squashY
+      }
 
       Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
       Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
@@ -2115,6 +2289,10 @@ Item {
           root.holding = true
           root.holdStartedAt = Date.now()
           root.holdProgress = 0
+          root.vX = 0
+          root.vY = 0
+          root.lastSampleT = 0
+          if (root.config.physics) { root.squashX = 1.16; root.squashY = 0.86 }
           // Pressing the dot always collapses the pie, whether or not the hold
           // goes on to arm a drag. Deciding that here -- rather than letting a
           // press reach the position bindings at all -- is what keeps a press
@@ -2143,6 +2321,14 @@ Item {
         onReleased: {
           holdTimer.stop()
           var wasDrag = root.moved
+          root.holding = false
+          root.holdProgress = 0
+          root.squashX = 1
+          root.squashY = 1
+          // A flick keeps `dragging` set and lets the glide finish the gesture;
+          // its onFinished persists the spot and clears the state.
+          if (wasDrag && root.config.physics && root.config.inertia && root.startInertia())
+            return
           // Persist while `dragging` is still true: rememberPosition() reads
           // dotX, which only reflects the drag while dragging is set. Clearing
           // it first would snap the reading back to the old stored spot and
@@ -2150,8 +2336,6 @@ Item {
           if (wasDrag) root.rememberPosition()
           root.dragging = false
           root.dragArmed = false
-          root.holding = false
-          root.holdProgress = 0
           root.moved = false
           if (wasDrag) return
           // A press that only collapsed the pie must not immediately reopen
@@ -2171,6 +2355,8 @@ Item {
           root.dragArmed = false
           root.holding = false
           root.holdProgress = 0
+          root.squashX = 1
+          root.squashY = 1
           root.moved = false
           root.pressedWhileOpen = false
         }

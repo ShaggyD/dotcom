@@ -115,6 +115,10 @@ also edit it by hand, and the shell reloads it on save.
 |---|---|---|
 | `enabled` | `true` | Show the dot (the bar icon toggles this) |
 | `greeted` | `false` | Set after the one-time "reporting for duty" salute |
+| `physics` | `true` | Master switch for the motion below |
+| `springOpen` | `true` | The pie pops open with a spring overshoot |
+| `wobble` | `true` | One-shot damped spin of the ring as it opens |
+| `inertia` | `true` | A flicked dot glides to a stop, bouncing off edges |
 | `dotSize` | `48` | Dot diameter, px |
 | `iconSize` | `30` | Glyph size inside the dot, px |
 | `radius` | `132` | Pie radius from the dot centre, px |
@@ -185,6 +189,28 @@ its angle, its hover state, or the theme changes — never while the pie is
 opening or closing. Measured on a 2× scaled 1368×912 display, an open/close
 cycle costs roughly 40 ms of CPU, down from about 430 ms when every canvas was
 screen-sized.
+
+## Physics
+
+Motion is on by default and runs on Qt's native spring animations, so it is a
+C++-driven transform, not a script loop. Everything is interaction-triggered —
+an idle dot does no work at all.
+
+- **Spring open** (`springOpen`) — the pie pops out with a slight overshoot
+  instead of easing linearly.
+- **Wobble** (`wobble`) — a one-shot damped spin of the ring as it opens.
+- **Slice magnet** — the slice under the finger springs outward and grows.
+- **Spring reorder** — neighbours spring aside when a slice is dragged.
+- **Flick inertia** (`inertia`) — a flicked dot glides to a stop and bounces
+  off a screen edge.
+- **Squash & stretch** — the dot squashes on press and springs back.
+- **Selection ripple** — a ring pulse where a slice was tapped.
+
+`physics` is the master switch; `springOpen`, `wobble` and `inertia` are
+independent. Measured as extra CPU on an open/close cycle, the spring pop is
+nearly free (~2 ms); the wobble adds ~40 ms because the ring keeps moving for
+900 ms, roughly doubling an open/close to ~90 ms. Both still sit about 5× under
+the pre-optimisation cost of ~430 ms.
 
 ## Development
 
