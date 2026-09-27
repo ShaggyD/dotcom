@@ -8,6 +8,8 @@ reach for behind small bar icons and hotkeys that assume a physical keyboard.
 Dot Com puts them under your thumb: one always-available dot you can park
 anywhere, and a pie that fans out on tap.
 
+![The Dot Com pie open over the desktop](preview.png)
+
 ## What it does
 
 - **Tap the dot** to open the pie; **tap a slice** to run it; **tap away or press
@@ -83,6 +85,10 @@ exactly as it will be saved.
 - **Remove** a slice from its slot; the hub (**Done**) saves, or discard to
   cancel.
 - Tiles that need a binary, backend or plugin you do not have draw dimmed.
+
+![Editing the pie in place](preview-editor.png)
+
+![Adding a slice from the tile sheet](preview-picker.png)
 
 Changes are written to `dot.json` (below).
 
