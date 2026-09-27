@@ -138,6 +138,9 @@ Item {
   property string pickCategory: "Window"
   property string pickQuery: ""
   property bool editDirty: false
+  // Settings are staged like the slice draft: the panel previews them live, but
+  // nothing is written until Save (Cancel restores the snapshot).
+  property bool settingsDirty: false
   property bool confirmCancel: false
   // Command Deck panel state. `configBackup` snapshots the settings on enter so
   // Cancel can revert them (settings apply live for the preview); `deckTab`
@@ -567,6 +570,7 @@ Item {
   function enterEdit() {
     root.draftSlices = root.activeSlices.slice()
     root.editDirty = false
+    root.settingsDirty = false
     root.confirmCancel = false
     root.pickIndex = -1
     // Snapshot settings so Cancel can revert the live edits the panel makes.
@@ -584,7 +588,7 @@ Item {
   }
 
   function commitEdit() {
-    if (root.editDirty) {
+    if (root.editDirty || root.settingsDirty) {
       var stored = []
       for (var i = 0; i < root.draftSlices.length; i++) stored.push(root.sliceToStored(root.draftSlices[i]))
       var next = {}
@@ -596,6 +600,7 @@ Item {
     root.mode = "use"
     root.pickIndex = -1
     root.editDirty = false
+    root.settingsDirty = false
     root.confirmCancel = false
     root.configBackup = null
     root.syncStableIds()
@@ -629,6 +634,7 @@ Item {
     root.pickIndex = -1
     root.mode = "use"
     root.editDirty = false
+    root.settingsDirty = false
     root.syncStableIds()
     root.dismiss()
   }
@@ -801,15 +807,11 @@ Item {
     for (var k in root.config) next[k] = root.config[k]
     next[String(key)] = value
     root.config = next
-    root.persistSoon()
+    root.settingsDirty = true
   }
 
   function toggleConfig(key) {
     root.setConfig(key, root.config[String(key)] !== true)
-  }
-
-  function persistSoon() {
-    if (!persistDebounce.running) persistDebounce.restart()
   }
 
   // Slice label/glyph rendering shared by the panel list and the pie: an app
@@ -2869,33 +2871,22 @@ Item {
 
     // ---------------------------------------------------------------- picker
     //
-    // A centred card rather than qs.Ui's PopupCard: that component is
-    // bar-anchored (it requires anchorItem and bar and positions itself
-    // relative to the bar), which is the wrong shape for a modal over a
-    // full-screen overlay.
-    Rectangle {
-      id: pickScrim
-      visible: root.mode === "pick"
-      anchors.fill: parent
-      color: Util.alpha(Color.background, 0.55)
-      z: 18
-
-      MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
-        onClicked: { root.mode = "edit"; root.pickIndex = -1 }
-      }
-    }
-
+    // Docked to the Command Deck's inner side while adding or changing a slice,
+    // so the whole config flow stays on one surface instead of a centred modal
+    // with a full-screen scrim. Styled as the same card.
     Rectangle {
       id: picker
       visible: root.mode === "pick"
       z: 20
-      anchors.centerIn: parent
-      width: Math.min(Style.space(640), Math.max(Style.space(320), panel.width - Style.space(64)))
-      height: Math.min(Style.space(560), Math.max(Style.space(280), panel.height - Style.space(64)))
+      width: Math.min(Style.space(460),
+        Math.max(Style.space(300), panel.width - commandDeck.width - Style.space(48)))
+      height: commandDeck.height
+      y: commandDeck.y
+      x: root.deckRight
+        ? (commandDeck.x - width - Style.space(8))
+        : (commandDeck.x + commandDeck.width + Style.space(8))
       radius: Style.space(14)
-      color: Util.alpha(Color.background, 0.98)
+      color: Util.alpha(Color.background, 0.97)
       border.width: Math.max(1, Style.space(1))
       border.color: root.ringBorderColor
 
@@ -2976,12 +2967,12 @@ Item {
           }
         }
 
-        Row {
+        Flow {
           id: pickRail
           anchors.top: pickHeader.bottom
           anchors.topMargin: Style.space(10)
           anchors.left: parent.left
-          height: Style.space(30)
+          anchors.right: parent.right
           spacing: Style.space(6)
 
           Repeater {
@@ -3226,14 +3217,6 @@ Item {
     id: confirmTimer
     interval: 3000
     onTriggered: root.confirmCancel = false
-  }
-
-  // Debounce for settings autosave, so dragging a slider does not rewrite
-  // dot.json on every frame.
-  Timer {
-    id: persistDebounce
-    interval: 250
-    onTriggered: root.persist()
   }
 
   // First-run salute. applyState() calls maybeGreet() once the state file

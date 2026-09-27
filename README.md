@@ -94,32 +94,34 @@ WYSIWYG preview, and the deck docks on whichever side the dot is not.
 **Slices** — build the ring:
 
 - The list shows every slice. **▲ / ▼** reorders it (or drag it around the pie
-  itself), **⟳** replaces it from the tile sheet, **🗑** removes it.
-- **Add slice** opens the tile sheet. Pick a category (Window, System, Keyboard,
-  Menu, Apps, Plugins) and a tile; Menu and Apps come from your live Omarchy
-  install, so they stay in sync.
+  itself), **⟳** replaces it, **🗑** removes it.
+- **Add slice** (or **⟳**) opens the tile sheet docked beside the deck — no
+  modal. Pick a category (Window, System, Keyboard, Menu, Apps, Plugins) and a
+  tile; Menu and Apps come from your live Omarchy install, so they stay in sync.
 - The Settings slice cannot be replaced or removed — it is the only way into the
   editor from the pie — and the ring keeps at least three slices.
 - Tiles that need a binary, backend or plugin you do not have draw dimmed.
 
 **Settings** — the live knobs: Physics, Spring open, Open wobble and Flick
 inertia; Show labels and Comfort inset; Dot size, Pie radius, Icon size and Idle
-opacity; plus Recenter and Reset all. Settings apply live and autosave.
+opacity; plus Recenter and Reset all. Changes preview live but are only written
+when you press Save.
 
-**Done** (the hub, or ✓) saves the slices; **Cancel** (✕) discards them and
-reverts any settings changed since the deck opened.
+**Save** writes both the slices and the settings; **Cancel** reverts everything
+changed since the deck opened. Escape acts as Cancel, asking first when there
+are unsaved changes.
 
 ![The Command Deck, Slices page](preview-editor.png)
 
 ![The Settings page](preview-settings.png)
 
-![Adding a slice from the tile sheet](preview-picker.png)
+![Adding a slice from the tile sheet, docked beside the deck](preview-picker.png)
 
 ## Configure
 
-State lives in `~/.local/state/omarchy/dot.json`. The Command Deck writes it —
-settings apply live and save automatically, slices save on Done — and the shell
-reloads the file on save, so you can also edit it by hand.
+State lives in `~/.local/state/omarchy/dot.json`. The Command Deck writes it on
+Save (Cancel leaves the file untouched), and the shell reloads the file on save,
+so you can also edit it by hand.
 
 | Key | Default | Meaning |
 |---|---|---|
