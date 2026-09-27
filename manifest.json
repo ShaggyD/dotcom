@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "io.github.shaggyd.dotcom",
-  "name": "Dot Com",
+  "name": "Dot Commander",
   "version": "0.1.0",
   "author": "ShaggyD",
   "license": "Apache-2.0",

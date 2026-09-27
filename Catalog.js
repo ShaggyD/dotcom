@@ -67,8 +67,8 @@ var SYSTEM = [
     argv: ["omarchy", "menu", "toggle", "style.theme"] },
   { key: "sys.setup",      label: "Setup",      glyph: g(0xE8B8), section: "System",
     argv: ["omarchy", "menu", "toggle", "settings"] },
-  // Dot Com is short for Dot Commander. This is the easter egg: a pickable tile
-  // that has the Commander address the bridge.
+  // The Commander easter egg: a pickable tile that has the bridge answer the
+  // salute.
   { key: "sys.commander",  label: "Commander",  glyph: g(0xEA3F), section: "System",
     plugin: "commander" }
 ]

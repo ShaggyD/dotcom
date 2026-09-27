@@ -93,6 +93,10 @@ Item {
   property real squashX: 1
   property real squashY: 1
   property bool slicePressed: false
+  // Radial drag-select from the idle dot: drag outward to fan the pie and pick
+  // a slice, with no hold required. Moving the dot still needs the hold.
+  property bool radialSelecting: false
+  readonly property real radialThreshold: Style.space(24)
   // Drag velocity, low-pass filtered, for the release glide.
   property real vX: 0
   property real vY: 0
@@ -482,8 +486,7 @@ Item {
 
   // -------------------------------------------------------------- Dot Commander
   //
-  // Dot Com is short for Dot Commander -- which is a mouthful, so the dot goes
-  // by Dot Com. The Commander gets a slice, a hidden IPC call, and a first-run
+  // The Commander easter eggs: a slice, a hidden IPC call, and a first-run
   // salute.
   readonly property var commanderQuips: [
     "All systems nominal, Commander.",
@@ -502,7 +505,7 @@ Item {
   // Hidden IPC: omarchy-shell shell call io.github.shaggyd.dotcom commander
   function commander() {
     var line = root.commanderLine()
-    root.sendNotification("Dot Com", line)
+    root.sendNotification("Dot Commander", line)
     return JSON.stringify({ name: "Dot Commander", line: line })
   }
 
@@ -521,7 +524,7 @@ Item {
     next.greeted = true
     root.config = next
     root.persist()
-    root.sendNotification("Dot Com", "Short for Dot Commander. Reporting for duty.")
+    root.sendNotification("Dot Commander", "Reporting for duty.")
   }
 
   // -------------------------------------------------------------- edit mode
@@ -595,6 +598,16 @@ Item {
     root.confirmCancel = false
     root.configBackup = null
     root.syncStableIds()
+  }
+
+  // Escape: back out of the picker, otherwise act as the deck's Cancel (which
+  // asks before discarding unsaved slices), or dismiss the pie in use mode.
+  // Previously Escape dismissed the overlay outright, which threw away the
+  // slice edits without a word.
+  function escapeAction() {
+    if (root.mode === "pick") { root.mode = "edit"; root.pickIndex = -1; return }
+    if (root.mode === "edit") { root.cancelEdit(); return }
+    root.dismiss()
   }
 
   // First outside tap arms the discard; a second within the window does it.
@@ -1689,6 +1702,58 @@ Item {
     return true
   }
 
+  // ---- radial drag-select -------------------------------------------------
+  //
+  // A quick outward drag from the idle dot fans the pie and highlights whatever
+  // slice the finger is over; releasing runs it. This is deliberately the
+  // opposite timing to moving the dot: the move needs a hold in the centre,
+  // while this fires the moment the finger travels outward, so the two never
+  // compete.
+
+  function beginRadialSelect() {
+    holdTimer.stop()
+    root.radialSelecting = true
+    // The hold was arming a drag; that is cancelled outright, so the dot stays
+    // put and the select takes over.
+    root.dragging = false
+    root.dragArmed = false
+    root.moved = false
+    root.holding = false
+    root.holdProgress = 0
+    root.squashX = 1
+    root.squashY = 1
+    root.pressedWhileOpen = false
+    root.open("{}")
+    root.updateRadialSelect()
+  }
+
+  function updateRadialSelect() {
+    var p = dotInput.mapToItem(screenSpace, dotInput.mouseX, dotInput.mouseY)
+    var dx = p.x - root.pieCentre.x
+    var dy = p.y - root.pieCentre.y
+    var d = Math.sqrt(dx * dx + dy * dy)
+    // Past the hub the slice under the finger lights up (and, being pressed,
+    // springs out); inside the hub nothing is selected.
+    root.hoveredSlice = (d >= root.innerRadius) ? root.sliceAt(p.x, p.y) : -1
+    root.slicePressed = root.hoveredSlice >= 0
+  }
+
+  function endRadialSelect() {
+    var index = root.hoveredSlice
+    root.radialSelecting = false
+    root.slicePressed = false
+    root.hoveredSlice = -1
+    if (index < 0 || index >= root.displaySlices.length) { root.dismiss(); return }
+    var slice = root.displaySlices[index]
+    if (!slice) { root.dismiss(); return }
+    // Editor commands act on the pie itself, so they must not collapse it first.
+    if (slice.plugin) { root.runSlice(slice); return }
+    // Let the pie collapse before the action runs, as a tap does.
+    root.dismiss()
+    root.pendingSlice = slice
+    actionDelay.restart()
+  }
+
   // The release glide. Runs while `dragging` is still true, so dotX/dotY keep
   // reading dragX/dragY; on finish it persists the resting spot and clears the
   // drag state. remembersPosition() must run before dragging clears, or it
@@ -1716,6 +1781,7 @@ Item {
     interval: 50
     repeat: true
     onTriggered: {
+      if (root.radialSelecting) return
       if (root.dragArmed) {
         // Keep sampling for as long as the finger is down.
         if (root.dragging) root.sampleDrag()
@@ -1787,7 +1853,7 @@ Item {
       anchors.fill: parent
       visible: root.opened
       focus: root.opened
-      onCloseRequested: root.dismiss()
+      onCloseRequested: root.escapeAction()
     }
 
     // ------------------------------------------------------------------- pie
@@ -2356,11 +2422,17 @@ Item {
         // The enlarged hit area is the whole point of a touch target; without
         // it the dot is a 48px coin you have to aim at.
         anchors.margins: -Style.space(12)
-        preventStealing: true
-        acceptedButtons: Qt.LeftButton
-        hoverEnabled: true
+      preventStealing: true
+      acceptedButtons: Qt.LeftButton
+      hoverEnabled: true
 
-        onContainsMouseChanged: root.hovering = containsMouse
+      // Where the press began, so a radial select is measured as finger travel
+      // rather than distance from the dot centre (an off-centre press should
+      // not trigger it on the first pixel of movement).
+      property real downX: 0
+      property real downY: 0
+
+      onContainsMouseChanged: root.hovering = containsMouse
 
         onPressed: {
           root.moved = false
@@ -2372,6 +2444,9 @@ Item {
           root.vX = 0
           root.vY = 0
           root.lastSampleT = 0
+          root.radialSelecting = false
+          dotInput.downX = dotInput.mouseX
+          dotInput.downY = dotInput.mouseY
           if (root.config.physics) { root.squashX = 1.16; root.squashY = 0.86 }
           // Pressing the dot always collapses the pie, whether or not the hold
           // goes on to arm a drag. Deciding that here -- rather than letting a
@@ -2393,6 +2468,17 @@ Item {
         }
 
         onPositionChanged: function (mouse) {
+          if (root.radialSelecting) { root.updateRadialSelect(); return }
+          // A quick outward drag before the hold arms is a radial select; the
+          // hold is still what gates moving the dot, so the two never compete.
+          if (!root.dragArmed && !root.opened && !root.pressedWhileOpen) {
+            var mx = dotInput.mouseX - dotInput.downX
+            var my = dotInput.mouseY - dotInput.downY
+            if (Math.sqrt(mx * mx + my * my) > root.radialThreshold) {
+              root.beginRadialSelect()
+              return
+            }
+          }
           // Movement before the hold completes is ignored on purpose: the dot
           // must not chase a finger that was only aiming for a tap.
           root.sampleDrag()
@@ -2400,6 +2486,7 @@ Item {
 
         onReleased: {
           holdTimer.stop()
+          if (root.radialSelecting) { root.endRadialSelect(); return }
           var wasDrag = root.moved
           root.holding = false
           root.holdProgress = 0
@@ -2431,6 +2518,8 @@ Item {
 
         onCanceled: {
           holdTimer.stop()
+          root.radialSelecting = false
+          root.slicePressed = false
           root.dragging = false
           root.dragArmed = false
           root.holding = false
@@ -2492,14 +2581,6 @@ Item {
                 font.letterSpacing: 1
               }
             }
-
-            Row {
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(8)
-              DeckRound { glyph: Catalog.g(0xE14C); tint: Color.foreground; onTapped: root.cancelEdit() }
-              DeckRound { glyph: Catalog.g(0xE5CA); tint: Color.accent; onTapped: root.commitEdit() }
-            }
           }
 
           Row {
@@ -2530,7 +2611,7 @@ Item {
 
           Flickable {
             width: parent.width
-            height: deckColumn.height - y
+            height: deckColumn.height - y - deckFooter.height - Style.space(10)
             contentWidth: width
             contentHeight: deckBody.implicitHeight
             clip: true
@@ -2546,6 +2627,31 @@ Item {
                 visible: root.deckTab === "slices"
                 width: parent.width
                 spacing: Style.space(6)
+
+                // Rotate the whole ring, which is distinct from moving one
+                // slice: the old floating bar's rotate buttons, reborn here.
+                // An Item, not a Row: the label and buttons need left/right
+                // anchors, which a Row forbids on its children.
+                Item {
+                  width: parent.width
+                  height: Style.space(34)
+
+                  Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Rotate ring"
+                    color: Util.alpha(Color.foreground, 0.8)
+                    font.family: Style.font.menuFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                  Row {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.space(4)
+                    DeckRowButton { glyph: Catalog.g(0xE5CB); onTapped: root.rotateDraft(-1) }
+                    DeckRowButton { glyph: Catalog.g(0xE5CC); onTapped: root.rotateDraft(1) }
+                  }
+                }
 
                 Repeater {
                   model: root.draftSlices.length
@@ -2682,39 +2788,55 @@ Item {
               }
             }
           }
+
+          // Footer. Cancel on the left, Save (primary) on the right -- the way
+          // a dialog footer reads.
+          Row {
+            id: deckFooter
+            width: parent.width
+            spacing: Style.space(8)
+
+            Rectangle {
+              width: (deckFooter.width - Style.space(8)) / 2
+              height: Style.space(38)
+              radius: Style.space(8)
+              color: Util.alpha(Color.foreground, 0.12)
+              border.width: Math.max(1, Style.space(1))
+              border.color: Util.alpha(Color.foreground, 0.5)
+              Text {
+                anchors.centerIn: parent
+                text: "Cancel"
+                color: Color.foreground
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.body
+              }
+              MouseArea { anchors.fill: parent; onClicked: root.cancelEdit() }
+            }
+
+            Rectangle {
+              width: (deckFooter.width - Style.space(8)) / 2
+              height: Style.space(38)
+              radius: Style.space(8)
+              color: Util.alpha(Color.accent, 0.9)
+              border.width: Math.max(1, Style.space(1))
+              border.color: Util.alpha(Color.accent, 0.9)
+              Text {
+                anchors.centerIn: parent
+                text: "Save"
+                color: Color.background
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.body
+              }
+              MouseArea { anchors.fill: parent; onClicked: root.commitEdit() }
+            }
+          }
         }
       }
     }
 
-    // The hub while editing: Done. Commits the draft and leaves edit mode.
-    Rectangle {
-      id: doneButton
-      visible: root.mode === "edit"
-      width: root.innerRadius * 2
-      height: width
-      radius: width / 2
-      x: Math.round(root.dotX - width / 2)
-      y: Math.round(root.dotY - height / 2)
-      color: Util.alpha(Color.accent, 0.92)
-      border.width: Math.max(1, Style.space(1))
-      border.color: root.ringBorderColor
-      z: 13
-
-      Text {
-        anchors.centerIn: parent
-        text: Catalog.g(0xE5CA)
-        color: Color.background
-        font.family: root.iconFamily
-        font.pixelSize: root.innerRadius * 1.1
-        renderType: Text.NativeRendering
-      }
-
-      MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
-        onClicked: root.commitEdit()
-      }
-    }
+    // The hub while editing is drawn by the pie chrome; saving and cancelling
+    // live in the Command Deck header, not on the dot, so the dot stays the
+    // preview's centre.
 
     // Transient notice, e.g. refusing to delete the Settings slice.
     Text {

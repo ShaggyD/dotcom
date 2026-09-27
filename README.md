@@ -1,18 +1,16 @@
-# Dot Com
+# Dot Commander
 
 A draggable on-screen dot that opens a radial menu of window, system, keyboard
 and app actions, built for touch-first tablets on [Omarchy](https://omarchy.org).
 
 The stock Omarchy tablet experience buries the handful of actions you actually
 reach for behind small bar icons and hotkeys that assume a physical keyboard.
-Dot Com puts them under your thumb: one always-available dot you can park
+Dot Commander puts them under your thumb: one always-available dot you can park
 anywhere, and a pie that fans out on tap.
 
-**Dot Com** is short for **Dot Commander** — which is a mouthful, so the dot
-answers to Dot Com. The pie is your command wheel; the editor is the Command
-Deck.
+The pie is your command wheel; the Command Deck is where you configure it.
 
-![The Dot Com pie open over the desktop](preview.png)
+![The Dot Commander pie open over the desktop](preview.png)
 
 ## What it does
 
@@ -144,7 +142,7 @@ reloads the file on save, so you can also edit it by hand.
 A stored slice references the catalog by `key`, so catalog fixes propagate to it
 automatically. A slice can also be a raw entry carrying `label`, `glyph`, and one
 of `hypr` (a Hyprland dispatch), `argv` (an argument vector), `app` (launched via
-the shell's app library) or `plugin` (handled inside Dot Com), plus `repeat` for
+the shell's app library) or `plugin` (handled inside Dot Commander), plus `repeat` for
 ramping slices.
 
 ### Catalog keys
