@@ -223,10 +223,11 @@ Item {
   //     catalog as `sys.setup` and can be added from the picker.
   readonly property var defaultSlices: [
     { key: "hypr.window.fullscreen" },
-    { key: "hypr.window.float" },
-    { key: "sys.keyboard" },
     { key: "sys.apps" },
-    { key: "pie.edit" }
+    { key: "sys.terminal" },
+    { key: "sys.power" },
+    { key: "pie.edit" },
+    { key: "sys.keyboard" }
   ]
 
   // ---- catalogs ----------------------------------------------------------

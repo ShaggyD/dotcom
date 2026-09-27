@@ -43,14 +43,18 @@ var WINDOW = [
 // `section` groups them in the picker.
 
 var SYSTEM = [
-  { key: "sys.apps",       label: "Apps",       glyph: g(0xE8B9), section: "Launch",
+  { key: "sys.apps",       label: "Launcher",   glyph: g(0xE8B9), section: "Launch",
     argv: ["omarchy", "menu", "toggle"] },
+  { key: "sys.terminal",   label: "Terminal",   glyph: g(0xEB8E), section: "Launch",
+    argv: ["omarchy-launch-terminal"] },
   { key: "sys.screenshot", label: "Screenshot", glyph: g(0xE412), section: "Capture",
     argv: ["omarchy", "capture", "screenshot", "fullscreen", "copy"] },
   { key: "sys.record",     label: "Record",     glyph: g(0xE04B), section: "Capture",
     argv: ["omarchy", "capture", "screenrecording", "--fullscreen"] },
   { key: "sys.lock",       label: "Lock",       glyph: g(0xE897), section: "Power",
     argv: ["omarchy", "system", "lock"] },
+  { key: "sys.power",      label: "Power",      glyph: g(0xF8C7), section: "Power",
+    argv: ["omarchy", "menu", "toggle", "system"] },
   { key: "sys.rotate",     label: "Rotate",     glyph: g(0xE1C1), section: "Display",
     argv: ["texp-rotate", "next"] },
   { key: "sys.nightlight", label: "Night light", glyph: g(0xE8B4), section: "Display",

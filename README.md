@@ -81,9 +81,9 @@ o.bind("SUPER + SHIFT + PERIOD", "Edit touch pie", "omarchy-shell shell call io.
 | Tap elsewhere, or `Esc` | Dismiss |
 | Right-click the bar icon | Open the Command Deck on Settings |
 
-The default pie has five slices: **Fullscreen**, **Float**, **Keyboard**,
-**Apps** and **Settings**. The Settings slice is the only way into the editor
-from the pie, so it cannot be removed.
+The default pie has six slices: **Fullscreen**, **Launcher**, **Terminal**,
+**Power**, **Settings** and **Keyboard**. The Settings slice is the only way into
+the editor from the pie, so it cannot be removed.
 
 ### The Command Deck
 
@@ -152,7 +152,7 @@ Built-in slices reference these keys (see [`Catalog.js`](Catalog.js)).
 | Section | Keys |
 |---|---|
 | Window | `hypr.window.close`, `hypr.window.fullscreen`, `hypr.window.float`, `hypr.window.pin`, `hypr.window.center`, `hypr.window.kill` |
-| System | `sys.apps`, `sys.screenshot`, `sys.record`, `sys.lock`, `sys.rotate`, `sys.nightlight`, `sys.brightup`, `sys.brightdown`, `sys.volup`, `sys.voldown`, `sys.theme`, `sys.setup`, `sys.commander` |
+| System | `sys.apps`, `sys.terminal`, `sys.screenshot`, `sys.record`, `sys.lock`, `sys.power`, `sys.rotate`, `sys.nightlight`, `sys.brightup`, `sys.brightdown`, `sys.volup`, `sys.voldown`, `sys.theme`, `sys.setup`, `sys.commander` |
 | Keyboard | `sys.keyboard` (auto), `kb.wvkbd_desktop`, `kb.wvkbd_mobile`, `kb.squeekboard`, `sys.keyboard_omarchy` |
 | Pie | `pie.recenter`, `pie.edit`, `pie.reset` |
 | Menu | every labelled route from Omarchy's menu, as `menu.<route>` |
