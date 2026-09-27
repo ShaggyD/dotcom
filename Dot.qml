@@ -453,8 +453,8 @@ Item {
 
   // -------------------------------------------------------------- Dot Commander
   //
-  // Dot Com is short for Dot Commander -- the full title, which the invoice
-  // truncated. The Commander gets a slice, a hidden IPC call, and a first-run
+  // Dot Com is short for Dot Commander -- which is a mouthful, so the dot goes
+  // by Dot Com. The Commander gets a slice, a hidden IPC call, and a first-run
   // salute.
   readonly property var commanderQuips: [
     "All systems nominal, Commander.",

@@ -8,8 +8,9 @@ reach for behind small bar icons and hotkeys that assume a physical keyboard.
 Dot Com puts them under your thumb: one always-available dot you can park
 anywhere, and a pie that fans out on tap.
 
-**Dot Com** is short for **Dot Commander** — the full title, which the invoice
-truncated. The pie is your command wheel; the editor is the Command Deck.
+**Dot Com** is short for **Dot Commander** — which is a mouthful, so the dot
+answers to Dot Com. The pie is your command wheel; the editor is the Command
+Deck.
 
 ![The Dot Com pie open over the desktop](preview.png)
 
