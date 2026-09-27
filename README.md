@@ -8,6 +8,9 @@ reach for behind small bar icons and hotkeys that assume a physical keyboard.
 Dot Com puts them under your thumb: one always-available dot you can park
 anywhere, and a pie that fans out on tap.
 
+**Dot Com** is short for **Dot Commander** — the full title, which the invoice
+truncated. The pie is your command wheel; the editor is the Command Deck.
+
 ![The Dot Com pie open over the desktop](preview.png)
 
 ## What it does
@@ -50,6 +53,15 @@ omarchy plugin enable io.github.shaggyd.dotcom
 
 The dot appears at 72 % across and down from the top-left. Tap it.
 
+### Bar placement
+
+The bar icon installs in the **right** section by default. Move it anywhere the
+shell's bar widgets go:
+
+```sh
+omarchy bar move io.github.shaggyd.dotcom --section left    # or center, right
+```
+
 ### Optional keybinding
 
 A keyboard is not required, but if the dot is ever parked under a fullscreen app,
@@ -73,10 +85,11 @@ The default pie has five slices: **Fullscreen**, **Float**, **Keyboard**,
 **Apps** and **Settings**. The Settings slice is the only way into the editor
 from the pie, so it cannot be removed.
 
-### The editor
+### The Command Deck
 
 Open **Settings** (`pie.edit`) to edit the pie in place — every slice is drawn
-exactly as it will be saved.
+exactly as it will be saved. The footer reads **Dot Commander · Command Deck**:
+the editor is where you command the pie.
 
 - The **`<<` `+` `>>`** bar below the ring adds a slice from the tile sheet.
   Pick a category (Window, System, Keyboard, Menu, Apps, Plugins) and a tile.
@@ -100,6 +113,7 @@ also edit it by hand, and the shell reloads it on save.
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | Show the dot (the bar icon toggles this) |
+| `greeted` | `false` | Set after the one-time "reporting for duty" salute |
 | `dotSize` | `48` | Dot diameter, px |
 | `iconSize` | `30` | Glyph size inside the dot, px |
 | `radius` | `132` | Pie radius from the dot centre, px |
@@ -123,7 +137,7 @@ Built-in slices reference these keys (see [`Catalog.js`](Catalog.js)).
 | Section | Keys |
 |---|---|
 | Window | `hypr.window.close`, `hypr.window.fullscreen`, `hypr.window.float`, `hypr.window.pin`, `hypr.window.center`, `hypr.window.kill` |
-| System | `sys.apps`, `sys.screenshot`, `sys.record`, `sys.lock`, `sys.rotate`, `sys.nightlight`, `sys.brightup`, `sys.brightdown`, `sys.volup`, `sys.voldown`, `sys.theme`, `sys.setup` |
+| System | `sys.apps`, `sys.screenshot`, `sys.record`, `sys.lock`, `sys.rotate`, `sys.nightlight`, `sys.brightup`, `sys.brightdown`, `sys.volup`, `sys.voldown`, `sys.theme`, `sys.setup`, `sys.commander` |
 | Keyboard | `sys.keyboard` (auto), `kb.wvkbd_desktop`, `kb.wvkbd_mobile`, `kb.squeekboard`, `sys.keyboard_omarchy` |
 | Pie | `pie.recenter`, `pie.edit`, `pie.reset` |
 | Menu | every labelled route from Omarchy's menu, as `menu.<route>` |
@@ -136,8 +150,13 @@ omarchy-shell shell toggle io.github.shaggyd.dotcom '{}'            # open / clo
 omarchy-shell shell call io.github.shaggyd.dotcom toggleDot '{}'    # show / hide the dot
 omarchy-shell shell call io.github.shaggyd.dotcom enterEdit '{}'    # open the editor
 omarchy-shell shell call io.github.shaggyd.dotcom recenter '{}'     # put the dot back
+omarchy-shell shell call io.github.shaggyd.dotcom commander '{}'    # Dot Commander, reporting for duty
 omarchy-shell shell call io.github.shaggyd.dotcom debugGeometry     # diagnostics
 ```
+
+`commander` is the easter egg: it returns the long name with a random salute and
+shows it as a notification. There is also a pickable **Commander** tile in the
+System catalog, so the bridge can be addressed from the pie itself.
 
 ## Remove
 
@@ -164,8 +183,9 @@ qmllint -I "$OMARCHY_PATH/shell" Dot.qml BarIcon.qml
 omarchy-shell shell rescanPlugins
 ```
 
-Saving any file under the plugin folder hot-reloads it; `rescanPlugins` forces a
-rediscovery if that does not happen.
+Saving any file under the plugin folder hot-reloads it. If a change to the
+overlay does not take effect, `omarchy restart shell` reloads it; the keep-loaded
+overlay is not always picked up by `omarchy-shell shell rescanPlugins`.
 
 ## License
 

@@ -60,15 +60,28 @@ Item {
 
   Component.onCompleted: stateFile.reload()
 
-  // Material Symbols, like the pie, rather than the bar's Nerd Font: a filled
-  // dot in a ring for on, an empty ring for off.
-  Text {
+  // Drawn rather than borrowed from an icon font, so it matches the pie's own
+  // dot-in-a-ring at any size: a thin ring with an accent centre when the dot
+  // is on, and a hollow ring when it is off. Colours follow the bar foreground
+  // and the theme accent, so the idle state never looks like a broken glyph.
+  Rectangle {
+    id: mark
     anchors.centerIn: parent
-    text: String.fromCharCode(root.dotOn ? 0xE39E : 0xE559)
-    color: root.barForeground
-    opacity: root.dotOn ? 1.0 : 0.45
-    font.family: "Material Symbols Rounded"
-    font.pixelSize: Style.bar.iconFont
-    renderType: Text.NativeRendering
+    width: Math.round(Style.bar.iconFont * 1.08)
+    height: width
+    radius: width / 2
+    color: "transparent"
+    border.width: Math.max(1.5, width * 0.09)
+    border.color: root.barForeground
+    opacity: root.dotOn ? 1.0 : 0.5
+
+    Rectangle {
+      visible: root.dotOn
+      anchors.centerIn: parent
+      width: Math.round(parent.width * 0.42)
+      height: width
+      radius: width / 2
+      color: Color.accent
+    }
   }
 }

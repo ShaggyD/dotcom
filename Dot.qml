@@ -42,6 +42,8 @@ Item {
     comfort: true,
     // Whether the dot is showing. Toggled from the bar icon.
     enabled: true,
+    // Set after the first-run salute, so "reporting for duty" shows once.
+    greeted: false,
     fx: 0.72,
     fy: 0.72,
     slices: null
@@ -445,7 +447,52 @@ Item {
     if (name === "edit") { root.enterEdit(); return }
     if (name === "recenter") { root.recenter(); return }
     if (name === "reset") { root.resetConfig(); return }
+    if (name === "commander") { root.commander(); return }
     root.reportFailure("unknown plugin action '" + name + "'")
+  }
+
+  // -------------------------------------------------------------- Dot Commander
+  //
+  // Dot Com is short for Dot Commander -- the full title, which the invoice
+  // truncated. The Commander gets a slice, a hidden IPC call, and a first-run
+  // salute.
+  readonly property var commanderQuips: [
+    "All systems nominal, Commander.",
+    "The bridge is yours, Commander.",
+    "Course plotted. Standing by.",
+    "Engage.",
+    "No anomalies detected, Commander.",
+    "Aye, Commander."
+  ]
+
+  function commanderLine() {
+    var i = Math.floor(Math.random() * root.commanderQuips.length)
+    return "Dot Commander. " + root.commanderQuips[i]
+  }
+
+  // Hidden IPC: omarchy-shell shell call io.github.shaggyd.dotcom commander
+  function commander() {
+    var line = root.commanderLine()
+    root.sendNotification("Dot Com", line)
+    return JSON.stringify({ name: "Dot Commander", line: line })
+  }
+
+  function sendNotification(summary, body) {
+    root.spawn(["omarchy-notification-send", "-u", "low", String(summary), String(body)], "notify")
+  }
+
+  property bool greetedOnce: false
+
+  function maybeGreet() {
+    if (root.greetedOnce) return
+    root.greetedOnce = true
+    if (root.config.greeted === true) return
+    var next = {}
+    for (var k in root.config) next[k] = root.config[k]
+    next.greeted = true
+    root.config = next
+    root.persist()
+    root.sendNotification("Dot Com", "Short for Dot Commander. Reporting for duty.")
   }
 
   // -------------------------------------------------------------- edit mode
@@ -1203,6 +1250,7 @@ Item {
       if (Object.prototype.hasOwnProperty.call(root.config, k)) merged[k] = parsed[k]
     }
     root.config = merged
+    root.maybeGreet()
   }
 
   function persist() {
@@ -2169,6 +2217,22 @@ Item {
       }
     }
 
+    // The Command Deck signature. Dot Com is short for Dot Commander, and this
+    // is where you command the pie.
+    Text {
+      visible: root.mode === "edit"
+      anchors.horizontalCenter: parent.horizontalCenter
+      y: root.editBarBelow
+        ? root.editBarY + root.editBarHeight + Style.space(6)
+        : root.editBarY - Style.space(20)
+      text: "DOT COMMANDER · COMMAND DECK"
+      color: Util.alpha(Color.foreground, 0.55)
+      font.family: Style.font.menuFamily
+      font.pixelSize: Style.font.bodySmall
+      font.letterSpacing: 1
+      z: 14
+    }
+
     // The hub while editing: Done. Commits the draft and leaves edit mode.
     Rectangle {
       id: doneButton
@@ -2586,6 +2650,14 @@ Item {
     id: confirmTimer
     interval: 3000
     onTriggered: root.confirmCancel = false
+  }
+
+  // First-run salute. applyState() calls maybeGreet() once the state file
+  // lands; this covers a fresh install, where there is no dot.json yet.
+  Timer {
+    interval: 2500
+    running: true
+    onTriggered: root.maybeGreet()
   }
 
   // Omarchy's menu definition, read once and mapped to tiles. Read rather than
