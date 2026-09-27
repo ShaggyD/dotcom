@@ -1454,13 +1454,16 @@ Item {
   // Canvas is retained-mode: it does not repaint when a bound colour merely
   // changes. The theme is applied by reassigning Color's properties, so the
   // pie and the hold ring would otherwise keep drawing the old palette until
-  // some unrelated change happened to trigger a paint.
+  // some unrelated change happened to trigger a paint. `themeRevision` is the
+  // broadcast the per-slice and chrome canvases listen to for that repaint.
+  property int themeRevision: 0
+
   Connections {
     target: Color
-    function onAccentChanged() { pieCanvas.requestPaint(); holdRing.requestPaint() }
-    function onForegroundChanged() { pieCanvas.requestPaint(); holdRing.requestPaint() }
-    function onBackgroundChanged() { pieCanvas.requestPaint() }
-    function onUrgentChanged() { pieCanvas.requestPaint(); holdRing.requestPaint() }
+    function onAccentChanged() { root.themeRevision += 1; holdRing.requestPaint() }
+    function onForegroundChanged() { root.themeRevision += 1; holdRing.requestPaint() }
+    function onBackgroundChanged() { root.themeRevision += 1 }
+    function onUrgentChanged() { root.themeRevision += 1; holdRing.requestPaint() }
   }
 
   onTargetScreenChanged: if (targetScreen === null) root.syncScreen()
@@ -1602,6 +1605,17 @@ Item {
       anchors.fill: parent
       visible: root.pieProgress > 0.01
       opacity: root.pieProgress
+      // Open/close is a transform on the whole pie, not a repaint of every
+      // wedge. The wedges are drawn once at full size and this scales the pie
+      // out of the dot, so the 190ms animation costs nothing per frame -- a
+      // transform is a GPU operation. The origin is the dot, so it grows from
+      // there, exactly as the old radius ramp did.
+      transform: Scale {
+        origin.x: root.pieCentre.x
+        origin.y: root.pieCentre.y
+        xScale: root.pieProgress
+        yScale: root.pieProgress
+      }
 
       // One delegate per slice IDENTITY, not per slot. That is the whole point
       // of this structure: reordering changes each delegate's `slot`, which
@@ -1639,32 +1653,32 @@ Item {
           Behavior on angle { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
 
           // Each wedge paints itself, so it can move independently of its
-          // neighbours. A single shared Canvas could not animate a shuffle --
-          // one painter cannot hold a different angle per wedge.
+          // neighbours (a drag-shuffle animates each wedge's angle). Sized to
+          // the pie rather than the screen: a full-window canvas per slice
+          // meant up to nine screen-sized rasters being rasterised. A wedge
+          // never reaches past the outer rim, so the pie's diameter is enough.
           Canvas {
             id: wedge
-            anchors.fill: parent
+            width: Math.ceil(root.outerRadius * 2 + Style.space(6))
+            height: width
+            x: Math.round(root.pieCentre.x - width / 2)
+            y: Math.round(root.pieCentre.y - height / 2)
 
             onPaint: {
               var ctx = getContext("2d")
               ctx.reset()
-              var p = root.pieProgress
-              // At p = 0 every radius is 0 and the hot inset goes negative;
-              // ctx.arc() rejects a negative radius, and Canvas still paints
-              // once on creation even while the pie is collapsed.
-              if (p <= 0.01) return
-              var cx = root.pieCentre.x
-              var cy = root.pieCentre.y
-              var innerR = root.innerRadius * p
-              var outerR = root.outerRadius * p
+              var cx = width / 2
+              var cy = height / 2
+              var innerR = root.innerRadius
+              var outerR = root.outerRadius
               var half = root.sectorAngle / 2
               // Inset each edge a little so neighbouring wedges read as
               // separate segments rather than one solid disc.
               root.sectorPath(ctx, cx, cy, (sliceItem.hot ? Math.max(1, outerR - 3) : outerR), innerR,
                               sliceItem.angle - half + 0.7, sliceItem.angle + half - 0.7)
               ctx.fillStyle = sliceItem.hot
-                ? Util.alpha(Color.accent, 0.92 * p)
-                : Util.alpha(Color.background, 0.78 * p)
+                ? Util.alpha(Color.accent, 0.92)
+                : Util.alpha(Color.background, 0.78)
               ctx.fill()
 
               // Leading spoke, hub to outer radius, stopping at the rim.
@@ -1674,7 +1688,7 @@ Item {
               ctx.moveTo(cx + sin * innerR, cy - cos * innerR)
               ctx.lineTo(cx + sin * outerR, cy - cos * outerR)
               ctx.lineWidth = Style.space(1)
-              ctx.strokeStyle = Util.alpha(Color.foreground, 0.45 * p)
+              ctx.strokeStyle = Util.alpha(Color.foreground, 0.45)
               ctx.stroke()
             }
 
@@ -1684,12 +1698,15 @@ Item {
               function onAngleChanged() { wedge.requestPaint() }
               function onHotChanged() { wedge.requestPaint() }
             }
+            // No onPieProgressChanged repaint: open/close is the container
+            // transform above, so the wedge is painted once and scaled, not
+            // repainted on every animation frame.
             Connections {
               target: root
-              function onPieProgressChanged() { wedge.requestPaint() }
               function onSectorAngleChanged() { wedge.requestPaint() }
               function onOuterRadiusChanged() { wedge.requestPaint() }
               function onInnerRadiusChanged() { wedge.requestPaint() }
+              function onThemeRevisionChanged() { wedge.requestPaint() }
             }
           }
 
@@ -1705,10 +1722,12 @@ Item {
             // raw rotated every icon a quarter turn clockwise from the wedge it
             // belongs to, so tapping what looked like "Close" ran whatever sat
             // 90 degrees round. sin drives x and cos drives y, negated.
-            x: root.pieCentre.x + Math.sin(sliceItem.rad) * sliceItem.labelR * root.pieProgress - width / 2
-            y: root.pieCentre.y - Math.cos(sliceItem.rad) * sliceItem.labelR * root.pieProgress - height / 2
-            opacity: root.pieProgress * (sliceItem.available ? 1 : 0.35)
-            scale: (0.45 + 0.55 * root.pieProgress) * (sliceItem.hot ? 1.12 : 1)
+            // Positioned at the full radius; the pie container transform does
+            // the growing, so no pieProgress here or it would scale twice.
+            x: root.pieCentre.x + Math.sin(sliceItem.rad) * sliceItem.labelR - width / 2
+            y: root.pieCentre.y - Math.cos(sliceItem.rad) * sliceItem.labelR - height / 2
+            opacity: sliceItem.available ? 1 : 0.35
+            scale: sliceItem.hot ? 1.12 : 1
 
             Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
@@ -1735,7 +1754,6 @@ Item {
               font.family: (sliceItem.slice && sliceItem.slice.font === "menu")
                 ? Style.font.menuFamily : root.iconFamily
               font.pixelSize: root.effectiveIconSize
-              renderType: Text.NativeRendering
             }
 
             Text {
@@ -1757,47 +1775,50 @@ Item {
 
       // Hub and rims. Declared after the wedges so the outer rim overlays the
       // wedge edges, which is the order the old single canvas painted in.
+      // Pie-sized like the wedges, and drawn once: the container transform
+      // animates it out of the dot.
       Canvas {
         id: pieChrome
-        anchors.fill: parent
+        width: Math.ceil(root.outerRadius * 2 + Style.space(6))
+        height: width
+        x: Math.round(root.pieCentre.x - width / 2)
+        y: Math.round(root.pieCentre.y - height / 2)
 
         onPaint: {
           var ctx = getContext("2d")
           ctx.reset()
-          var p = root.pieProgress
-          if (p <= 0.01) return
-          var cx = root.pieCentre.x
-          var cy = root.pieCentre.y
+          var cx = width / 2
+          var cy = height / 2
 
           // Hub, so the pie reads as one object with a centre rather than a
           // ring of loose segments.
           ctx.beginPath()
-          ctx.arc(cx, cy, root.innerRadius * p, 0, Math.PI * 2)
-          ctx.fillStyle = Util.alpha(Color.background, 0.86 * p)
+          ctx.arc(cx, cy, root.innerRadius, 0, Math.PI * 2)
+          ctx.fillStyle = Util.alpha(Color.background, 0.86)
           ctx.fill()
 
           // Outer rim: the theme's popup/card border, which Omarchy wires to
           // the Hyprland active-border colour, so the ring matches window
           // borders and follows theme switches.
           ctx.beginPath()
-          ctx.arc(cx, cy, root.outerRadius * p, 0, Math.PI * 2)
+          ctx.arc(cx, cy, root.outerRadius, 0, Math.PI * 2)
           ctx.lineWidth = Style.space(1)
-          ctx.strokeStyle = Util.alpha(root.ringBorderColor, p)
+          ctx.strokeStyle = Util.alpha(root.ringBorderColor, 1)
           ctx.stroke()
 
           ctx.beginPath()
-          ctx.arc(cx, cy, root.innerRadius * p, 0, Math.PI * 2)
+          ctx.arc(cx, cy, root.innerRadius, 0, Math.PI * 2)
           ctx.lineWidth = Style.space(1)
-          ctx.strokeStyle = Util.alpha(Color.foreground, 0.28 * p)
+          ctx.strokeStyle = Util.alpha(Color.foreground, 0.28)
           ctx.stroke()
         }
 
         onVisibleChanged: if (visible) requestPaint()
         Connections {
           target: root
-          function onPieProgressChanged() { pieChrome.requestPaint() }
           function onOuterRadiusChanged() { pieChrome.requestPaint() }
           function onInnerRadiusChanged() { pieChrome.requestPaint() }
+          function onThemeRevisionChanged() { pieChrome.requestPaint() }
         }
       }
 

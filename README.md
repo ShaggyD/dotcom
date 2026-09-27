@@ -176,6 +176,16 @@ added, and optionally delete `~/.local/state/omarchy/dot.json`.
   (`hl.dsp.*`), or the on-screen-keyboard wrappers. Commands are argv vectors run
   with `exec "$@"`, so no value is ever re-parsed by a shell.
 
+## Performance
+
+The pie is drawn with one canvas per slice, each sized to the pie rather than to
+the screen, and open/close is a scale transform on the whole pie instead of a
+repaint of every wedge on every animation frame. A wedge is redrawn only when
+its angle, its hover state, or the theme changes — never while the pie is
+opening or closing. Measured on a 2× scaled 1368×912 display, an open/close
+cycle costs roughly 40 ms of CPU, down from about 430 ms when every canvas was
+screen-sized.
+
 ## Development
 
 ```sh
